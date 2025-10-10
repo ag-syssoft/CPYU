@@ -1,0 +1,19 @@
+; =====================================================
+;  CPYU-V16 Assembly Program
+;  sum_input.asm — compute and print the sum of 1..N
+;  The user provides N via the terminal (IN instruction)
+;  Simulator: cpyu.py
+;  Architecture: 16-bit, 32 registers, r0 hard-wired to 0
+; =====================================================
+
+    IN   r2             ; read upper limit N (e.g. 5)
+    LI   r1, 1          ; r1 ← 1      (loop counter i)
+    LI   r3, 0          ; r3 ← 0      (accumulator sum)
+
+loop:
+    ADD  r3, r3, r1     ; sum += i
+    ADDI r1, r1, 1      ; i++
+    BNE  r1, r2, loop   ; loop until i == N
+    ADD  r3, r3, r2     ; add the final N
+    OUT  r3             ; print the sum in both formats
+    HALT
