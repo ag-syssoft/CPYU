@@ -24,6 +24,7 @@ from typing import List, Tuple, Dict, Callable, Optional
 U16_MASK = 0xFFFF
 NUM_REGS = 32
 MEM_SIZE = 1 << 16  # 65536 words
+# Note: everything in the machine is 16-bit. Values are always clamped to 0..0xFFFF.
 
 
 def u16(x: int) -> int:
@@ -33,6 +34,7 @@ def u16(x: int) -> int:
 def to_signed16(x: int) -> int:
     x &= U16_MASK
     return x if x < 0x8000 else x - 0x10000
+    # Converts an unsigned 16-bit number (0..65535) to a signed view (-32768..32767).
 
 
 def parse_int_token(tok: str) -> int:
@@ -74,6 +76,9 @@ def parse_int_token(tok: str) -> int:
 class Instr:
     op: str
     args: Tuple
+    # A single decoded instruction:
+    #   op   — mnemonic like 'ADD', 'LD', 'BEQ'
+    #   args — a tuple of small integers (register indices, immediates, targets)
 
 
 class CPU:
@@ -85,6 +90,11 @@ class CPU:
         self.labels: Dict[str, int] = {}
         self.single_step: bool = False
         self.on_out: Optional[Callable[[str], None]] = None  # for tests
+        # Conceptually:
+        #   - reg holds 32 registers r0..r31 (r0 is always 0).
+        #   - mem is a 64K-word RAM (each word is 16 bits).
+        #   - prog is a list of Instr objects (the "ROM"/program memory).
+        #   - pc is an index into prog, not a byte address.
 
     # -------- Memory --------
     def mread(self, addr: int) -> int:
@@ -96,12 +106,14 @@ class CPU:
         if not (0 <= addr < MEM_SIZE):
             raise RuntimeError(f"Memory write OOB at address {addr}")
         self.mem[addr] = u16(val)
+        # All memory writes are masked to 16 bits, simulating 16-bit hardware.
 
     # -------- Execution --------
     def _set_reg(self, rd: int, val: int):
         if rd == 0:
             return  # r0 is hard-wired to 0
         self.reg[rd] = u16(val)
+        # Register writes are also masked to 16 bits (wrap-around on overflow).
 
     def _trace(self, old_pc: int, instr: Instr, before_regs: Tuple[int, ...]):
         if not self.single_step:
@@ -115,6 +127,7 @@ class CPU:
         print(f"PC={old_pc:05d}  {instr.op} {args_txt:20s}  | " + ' '.join(changed))
 
     def step(self) -> bool:
+        # Executes one instruction at pc. Returns False on HALT or when pc leaves program.
         if self.pc < 0 or self.pc >= len(self.prog):
             return False
         instr = self.prog[self.pc]
@@ -125,6 +138,7 @@ class CPU:
         op = instr.op
         a = instr.args
 
+        # ALU operations (register-register and register-immediate)
         if op == 'ADD':
             rd, rs1, rs2 = a
             self._set_reg(rd, self.reg[rs1] + self.reg[rs2])
@@ -143,12 +157,14 @@ class CPU:
         elif op == 'XOR':
             rd, rs1, rs2 = a
             self._set_reg(rd, self.reg[rs1] ^ self.reg[rs2])
+        # Memory access (absolute addresses for this v1 ISA)
         elif op == 'LD':
             rd, addr = a
             self._set_reg(rd, self.mread(addr))
         elif op == 'ST':
             rs, addr = a
             self.mwrite(addr, self.reg[rs])
+        # Control flow
         elif op == 'BEQ':
             rs1, rs2, target = a
             if self.reg[rs1] == self.reg[rs2]:
@@ -160,6 +176,7 @@ class CPU:
         elif op == 'JMP':
             (target,) = a
             self.pc = target
+        # I/O (terminal)
         elif op == 'IN':
             (rd,) = a
             line = sys.stdin.readline()
@@ -193,6 +210,7 @@ class CPU:
         return True
 
     def run(self, max_steps: int = 1_000_000):
+        # Keep stepping until HALT or a safety limit is reached.
         steps = 0
         while steps < max_steps and self.step():
             steps += 1
@@ -208,6 +226,10 @@ class AsmError(Exception):
 
 
 def assemble(src: str) -> Tuple[List[Instr], Dict[str, int]]:
+    # Translates assembly source (text) into a list of Instr objects (prog)
+    # and a label->pc mapping. Two passes:
+    #   Pass 1 — find labels and their instruction indices (pc values).
+    #   Pass 2 — parse each instruction and its operands.
     lines = src.splitlines()
 
     def clean(line: str) -> str:
@@ -254,6 +276,7 @@ def assemble(src: str) -> Tuple[List[Instr], Dict[str, int]]:
             labels[label] = pc
         else:
             pc += 1
+    # After pass 1, labels[label_name] holds the target pc index of the next instruction.
 
     # Pass 2: parse instructions
     prog: List[Instr] = []
@@ -292,6 +315,8 @@ def assemble(src: str) -> Tuple[List[Instr], Dict[str, int]]:
             rs = reg_idx(args[1], ln)
             prog.append(Instr('ADD', (rd, rs, 0)))
             continue
+        # Note: pseudo-instructions expand to one real instruction here,
+        # using r0 as the zero register.
 
         if op in ('ADD', 'SUB', 'AND', 'OR', 'XOR'):
             need_n(3)
@@ -348,6 +373,7 @@ def assemble(src: str) -> Tuple[List[Instr], Dict[str, int]]:
 # =====================
 
 def run_file(filename: str, single_step: bool) -> int:
+    # Top-level helper: read a source file, assemble it, and run on the CPU.
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             src = f.read()
@@ -392,6 +418,9 @@ def main(argv: List[str]) -> int:
 # =====================
 
 def _selftest() -> int:
+    # This function assembles and runs small programs and checks
+    # that the CPU produces the expected outputs/behaviors.
+    # It provides a quick regression check for students.
     # 1) Wraparound test
     src = """
         LI r1, 65530
