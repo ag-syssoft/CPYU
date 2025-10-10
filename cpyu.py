@@ -1,29 +1,16 @@
 """
-Tiny‑RV16 (v1) — a didactic, RISC‑V‑flavored 16‑bit CPU simulator
+CPYU-V16 — Compact Python University Virtual 16-bit Architecture
 =================================================================
 
-This version is intentionally small and very readable for first‑semester students.
-It implements the **v1 spec** we discussed:
+Educational CPU simulator and assembler implemented in Python.
+Designed for first-semester computer architecture courses at Universität Trier.
 
-- 32 registers `r0..r31` (16‑bit). **r0 is hard‑wired to 0** (writes ignored).
-- Memory: **2^16 words** (65536), each **16‑bit**. Word‑addressed.
-- Program Counter (PC) counts **instructions** (not bytes).
-- Arithmetic wraps modulo 2^16.
-- **Addressing in v1**: only *immediate* addresses for `LD`/`ST` (decimal or `0x...`).
-  (Register‑indirect, indexed, stack, calls come later.)
-- **I/O**: `IN rd` (read one line from stdin as decimal or 0xhex; strict range) and
-  `OUT rs` (print signed decimal with sign, width 5, and hex `(0xhhhh)`).
-- **CLI**: `python tiny_rv16.py program.asm [--single-step]`
-  - `--single-step` prints a verbose trace of every executed instruction.
-- **Assembler**: two‑pass; commas optional; case‑insensitive; labels supported for
-  branch/jump *targets*. (For v1, `LD`/`ST` use numeric addresses only; see TODO.)
-
-Open design choice (please confirm):
-- For **LD/ST addresses**, we currently require **numeric** immediates only in v1.
-  If you prefer `LD rd, mydata` where `mydata:` is a label that resolves to a
-  numeric **address**, I can enable that (simple to add) — just say the word.
-
+Implements the base CPYU-V16 instruction set (v1):
+  • 32 × 16-bit regs (r0 hard-wired to 0)
+  • word-addressed 64 Ki memory
+  • immediate addressing for LD/ST, IN/OUT, branches, HALT
 """
+
 from __future__ import annotations
 import sys
 import argparse
@@ -371,12 +358,16 @@ def run_file(filename: str, single_step: bool) -> int:
     try:
         prog, _ = assemble(src)
     except AsmError as e:
-        print(f"Assembly error: {e}", file=sys.stderr)
+        print(f"[CPYU-V16] Assembly error: {e}", file=sys.stderr)
         return 2
 
     cpu = CPU()
     cpu.prog = prog
     cpu.single_step = single_step
+
+    print("CPYU-V16 Simulator — Compact Python University Virtual 16-bit Architecture")
+    print("(c) Universität Trier, 2025")
+    print()
 
     try:
         cpu.run()
@@ -495,6 +486,6 @@ if __name__ == '__main__':
     # Support a lightweight self-test trigger to validate behavior without separate files
     if len(sys.argv) == 2 and sys.argv[1] == '--selftest':
         code = _selftest()
-        print('[selftest] OK')
+        print('[CPYU-V16 selftest] OK')
         sys.exit(code)
     sys.exit(main(sys.argv[1:]))
